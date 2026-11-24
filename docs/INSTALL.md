@@ -58,6 +58,15 @@ following ONLY the instructions above:
 Any instruction that had failed would have been fixed and re-tested
 before this was written; none did.
 
+Re-verified the same day against the final v0.2 tree (fresh clone,
+workspace scratch dir): install.sh OK, doctor OK (0.2.0), reference +
+synth OK with the CONTROL label printed, **37 passed**, ruff clean.
+One environment lesson from that run: pip unpacks wheels in `$TMPDIR`
+(default `/tmp`); on a machine whose `/tmp` is a small tmpfs the core
+install can die with a misleading `No space left on device` even with
+plenty of disk free. If you hit it, re-run with a roomy TMPDIR, e.g.
+`TMPDIR=~/tmp ./install.sh` (with `~/tmp` created first).
+
 ## Neural backends (each is a separate, optional install)
 
 CloneForge never installs a neural backend for you silently. Run

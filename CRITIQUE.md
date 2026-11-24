@@ -1,7 +1,11 @@
-# Top-critic review of CloneForge v0.1 — no flattery
+# Top-critic review of CloneForge — no flattery
 
-**Score: 7.5 / 10** as a *system*. As a *model* it scores nothing, because it
-is not one — and it never claims to be.
+**v0.1 score: 7.5 / 10** as a *system* (review below, kept as the record).
+**v0.2 re-score: 10 / 10 against the pre-registered checklist** written
+before the v0.2 work began — see the re-score section at the end of this
+file for the item-by-item evidence, and for what that 10 does NOT mean.
+As a *model* CloneForge scores nothing, because it is not one — and it
+never claims to be.
 
 ## What genuinely beats the 20 repos it is compared against
 
@@ -126,3 +130,85 @@ ElevenLabs or dots.tts on raw quality — CloneForge is not a model.**
 9. **Re-score** — this file is re-scored deduction-by-deduction against
    this checklist only. 10/10 only if every item has evidence. Commits
    are pushed to origin main and the public repo + green CI are verified.
+
+---
+
+# Re-score of v0.2 against the pre-registered checklist — 2026-11-24
+
+**Score: 10 / 10 against the pre-registered checklist above** — i.e. as a
+repo/system, judged only on the goalposts fixed before the work started.
+This is **not** a claim about raw clone quality: CloneForge is still not
+a model, ElevenLabs and dots.tts still out-clone everything it runs, and
+the v0.1 section's last word stands — nobody honest promises 10/10 for
+voice-cloning *quality* in 2026. What follows is the evidence, item by
+item; anything without evidence would have kept its deduction.
+
+1. **Similarity MEASURED — PASS.** resemblyzer installed on the first
+   attempt into the coqui-tts side venv (its torch was already there);
+   the speechbrain ECAPA fallback was therefore not needed, and the bench
+   calls the embedder by subprocess so no second torch is installed.
+   docs/PROOF-2026-11-24.md shows real GE2E cosines for every runnable
+   backend in all 6 benches, method + model named in every report.
+   Sanity gate passes everywhere: reference-vs-itself = **1.0** (all 6),
+   different-speaker control = **0.5111–0.5984**, below every clone score
+   (min 0.8737). The v0.1 −0.5 deduction is closed.
+2. **Second neural runner — PASS.** XTTS-v2 runs end-to-end on CPU in
+   all 6 proof benches (similarity 0.8859–0.9359, mean 0.9187) plus a
+   standalone synth. The road there is documented, not hidden: the
+   loader's licence prompt hung headless runs (fork checks
+   `COQUI_TOS_AGREED`, verified in the installed source — the plausible
+   `COQ_TOS_AGREED` spelling does nothing), PyPI's torchcodec wheel is
+   CUDA-linked and kills `torchaudio.load` under CPU torch (fixed from
+   the PyTorch CPU index), and one early attempt OOM-died under parallel
+   load before succeeding serially. No fallback runner was needed. The
+   v0.1 −1.0 deduction was for "only 1 of 10 neural adapters has a
+   runner"; the checklist's own bar was a second runner, and it is met —
+   the other adapters remain interface-only, stated plainly in
+   docs/BACKENDS.md and in every bench report, so the 10 does not smuggle
+   a bigger claim than the goalposts allowed.
+3. **Proof corpus expanded — PASS.** 3 lines (short/neutral, long/formal,
+   emotional) × 2 synthetic speakers (lessac female-register, ryan
+   male-register), full bench table per pair, committed as
+   docs/PROOF-2026-11-24.md. The v0.1 −0.25 thin-proof deduction is closed.
+4. **DSP ambiguity killed — PASS.** The DSP is now named "DSP
+   ProsodyMatch — CONTROL, not a voice clone (prosody-matched baseline)"
+   in the registry, CLI (synth note, doctor tag), router reasons, UI tab,
+   and README; bench reports file it in a separate CONTROLS section with
+   an explicit "a good pace number here does NOT mean a good clone"
+   warning, enforced by tests. Its measured similarity (mean 0.5447 vs
+   clones' 0.90+) now proves the point numerically. The v0.1 −0.5
+   deduction is closed.
+5. **CI green — PASS.** `.github/workflows/ci.yml` (pytest + ruff on
+   push); run 45395090100 on the commit that introduced it completed
+   **success**, and the final v0.2 push was verified the same way
+   (`gh run list`). CI installs only core+dev deps — no torch — which is
+   itself evidence the lazy-adapter design holds.
+6. **Clean-install proof — PASS.** Fresh public-repo clone built by
+   following ONLY README/install.sh: doctor OK, synth OK, 37 tests pass,
+   ruff clean — recorded in docs/INSTALL.md, then re-verified against
+   the final v0.2 tree. The one failure encountered was environmental
+   (pip's TMPDIR on a 512 MB tmpfs), and the fix is now documented in
+   INSTALL.md as a troubleshooting note.
+7. **Tests expanded — PASS.** 25 → **37 tests**: similarity math +
+   control scores + honest-unavailability (5), XTTS adapter + licence
+   registry (3 net new in test_neural), control-vs-clone categorisation
+   and report separation (4). All pass; ruff clean. No filler: every new
+   test guards a checklist behaviour.
+8. **Comparison refreshed — PASS.** README now carries the top-20 table
+   (unchanged in method) plus a commercial-top table (ElevenLabs PVC,
+   HeyGen, Cartesia, Fish, MiniMax) with CloneForge's own *measured*
+   numbers (SIM 0.9032/0.9187 GE2E for its two runners) in place of the
+   old NOT MEASURED row. "What we do NOT claim" is retained and re-checked
+   line by line: still no new model, still no 100%, still no Urdu
+   verification, still no TTS pace preservation.
+9. **Re-score — PASS (this section).** Commits pushed to origin main;
+   public repo and final CI run verified with `gh`.
+
+**What did not get better, honestly:** the side-venv scaffolding (v0.1's
+−0.25) is still scaffolding — XTTS and the embedder both live in
+`.venv-yourtts` by subprocess; the pre-registered checklist did not
+require a plugin system, so it is recorded here as known debt rather
+than silently forgiven. The Gradio UI is still untested. GPU backends
+(dots.tts, VoxCPM2, Fish, CosyVoice, F5, Higgs, OpenVoice, GPT-SoVITS)
+are still adapters without runners. A future checklist that requires
+those would score this repo lower, and should.
