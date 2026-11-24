@@ -1,0 +1,260 @@
+"""The benchmark harness — CloneForge's core product.
+
+Runs the SAME line through every runnable backend against the SAME
+reference, then measures what can honestly be measured:
+
+- pace: speaking-rate difference vs the reference (measured from WAV
+  durations and the known word count — exact),
+- pitch: median F0 of output vs reference (autocorrelation — measured),
+- pronunciation: WER of a local ASR transcript vs the target line
+  (measured ONLY if a local ASR is installed; otherwise NOT MEASURED),
+- speaker similarity: embedding cosine (measured ONLY if a local speaker
+  embedder is installed; otherwise NOT MEASURED).
+
+No metric is ever estimated. A backend that is not installed, or whose
+runner is not implemented, is reported as NOT RUN — never scored.
+"""
+
+from __future__ import annotations
+
+import html
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from . import audio
+from .backends import BACKENDS
+from .metrics import media_duration_seconds, median_f0_hz, rate_difference_pct, speech_rate_wpm, wer
+
+NOT_MEASURED = "NOT MEASURED"
+NOT_RUN = "NOT RUN"
+
+
+@dataclass
+class BenchRow:
+    backend_id: str
+    backend_name: str
+    status: str  # "ok" | NOT_RUN
+    note: str = ""
+    output_path: str = ""
+    duration_s: float | None = None
+    rate_wpm: float | None = None
+    rate_diff_pct: float | None = None
+    f0_hz: float | None = None
+    f0_diff_pct: float | None = None
+    wer_pct: float | str = NOT_MEASURED
+    similarity: float | str = NOT_MEASURED
+
+
+@dataclass
+class BenchReport:
+    line: str
+    reference_path: str
+    reference_duration_s: float
+    reference_rate_wpm: float
+    reference_f0_hz: float | None
+    rows: list[BenchRow] = field(default_factory=list)
+    asr_status: str = NOT_MEASURED
+    embedder_status: str = NOT_MEASURED
+
+
+def _try_asr():
+    """Return a transcribe(path)->str callable, or None."""
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError:
+        return None
+    model = WhisperModel("tiny", device="cpu", compute_type="int8")
+
+    def transcribe(path: str) -> str:
+        segments, _info = model.transcribe(path)
+        return " ".join(s.text for s in segments).strip()
+
+    return transcribe
+
+
+def _try_embedder():
+    """Return an embed(path)->list[float] callable, or None."""
+    try:
+        from resemblyzer import VoiceEncoder, preprocess_wav
+    except ImportError:
+        return None
+    encoder = VoiceEncoder()
+
+    def embed(path: str):
+        return encoder.embed_utterance(preprocess_wav(path)).tolist()
+
+    return embed
+
+
+def run_bench(line: str, reference_wav: str | Path,
+              out_dir: str | Path) -> BenchReport:
+    """Benchmark every runnable backend on `line` against `reference_wav`.
+
+    The reference must be a recording (real or synthetic) of the SAME line;
+    its transcript is `line` itself.
+    """
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    ref_dur = media_duration_seconds(reference_wav)
+    words = max(1, len(line.split()))
+    ref_rate = speech_rate_wpm(words, ref_dur)
+    ref_samples, ref_sr = audio.read_wav_samples(reference_wav)
+    ref_f0 = median_f0_hz(ref_samples, ref_sr)
+
+    transcribe = _try_asr()
+    embed = _try_embedder()
+    ref_embedding = None
+    if embed is not None:
+        try:
+            ref_embedding = embed(str(reference_wav))
+        except Exception:  # noqa: BLE001 — embedder failed: report, don't fake
+            embed = None
+
+    report = BenchReport(
+        line=line,
+        reference_path=str(reference_wav),
+        reference_duration_s=ref_dur,
+        reference_rate_wpm=ref_rate,
+        reference_f0_hz=ref_f0,
+        asr_status="faster-whisper (tiny, local)" if transcribe else NOT_MEASURED,
+        embedder_status="resemblyzer (local)" if embed else NOT_MEASURED,
+    )
+
+    from .neural import yourtts_clone
+
+    runners = {
+        "dsp-prosody": lambda p: audio.dsp_clone(
+            line, reference_wav, p, reference_text=line),
+        "piper": lambda p: {"output_path": str(audio.piper_synthesize(line, p))},
+        "yourtts": lambda p: yourtts_clone(line, reference_wav, p),
+    }
+
+    for b in BACKENDS:
+        if b.id in runners:
+            out_path = out / f"{b.id}.wav"
+            try:
+                runners[b.id](out_path)
+            except Exception as exc:  # noqa: BLE001 — a failed run is data, not a crash
+                report.rows.append(BenchRow(b.id, b.name, NOT_RUN,
+                                            note=f"runner failed: {exc}"))
+                continue
+            row = _score(b.id, b.name, out_path, line, ref_rate, ref_f0,
+                         transcribe, embed, ref_embedding)
+            report.rows.append(row)
+        elif b.kind == "voice-conversion":
+            report.rows.append(BenchRow(
+                b.id, b.name, NOT_RUN,
+                note="interface-only in v0.1: conversion runs in RVC itself; "
+                     "CloneForge does not wrap it yet"))
+        elif b.kind in ("neural-clone",):
+            state = "installed" if b.installed() else "not installed"
+            report.rows.append(BenchRow(
+                b.id, b.name, NOT_RUN,
+                note=f"adapter registered, backend {state}; runner is "
+                     "interface-only in v0.1 (see docs/BACKENDS.md)"))
+    # Rank measured rows by |rate diff|, then |F0 diff|; NOT RUN rows last.
+    report.rows.sort(key=lambda r: (
+        r.status != "ok",
+        abs(r.rate_diff_pct) if r.rate_diff_pct is not None else 1e9,
+        abs(r.f0_diff_pct) if r.f0_diff_pct is not None else 1e9,
+    ))
+    return report
+
+
+def _score(backend_id, name, out_path, line, ref_rate, ref_f0,
+           transcribe, embed, ref_embedding) -> BenchRow:
+    from .metrics import cosine_similarity
+
+    dur = media_duration_seconds(out_path)
+    words = max(1, len(line.split()))
+    rate = speech_rate_wpm(words, dur)
+    samples, sr = audio.read_wav_samples(out_path)
+    f0 = median_f0_hz(samples, sr)
+    row = BenchRow(
+        backend_id=backend_id, backend_name=name, status="ok",
+        output_path=str(out_path), duration_s=dur, rate_wpm=rate,
+        rate_diff_pct=rate_difference_pct(ref_rate, rate), f0_hz=f0,
+        f0_diff_pct=(rate_difference_pct(ref_f0, f0)
+                     if (ref_f0 and f0) else None),
+    )
+    if transcribe is not None:
+        try:
+            row.wer_pct = round(wer(line, transcribe(str(out_path))), 2)
+        except Exception:  # noqa: BLE001 — ASR failure means NOT MEASURED
+            row.wer_pct = NOT_MEASURED
+    if embed is not None and ref_embedding is not None:
+        try:
+            row.similarity = round(
+                cosine_similarity(ref_embedding, embed(str(out_path))), 4)
+        except Exception:  # noqa: BLE001 — embedder failure means NOT MEASURED
+            row.similarity = NOT_MEASURED
+    return row
+
+
+def _fmt(value, suffix=""):
+    return NOT_MEASURED if value is None else f"{value:.2f}{suffix}"
+
+
+def report_markdown(report: BenchReport) -> str:
+    ref_line = (
+        f"Reference: `{report.reference_path}` — "
+        f"{report.reference_duration_s:.2f}s, "
+        f"{report.reference_rate_wpm:.1f} wpm, "
+        f"F0 {_fmt(report.reference_f0_hz, ' Hz')}"
+    )
+    asr_line = (f"ASR for WER: {report.asr_status} · "
+                f"Speaker embedder: {report.embedder_status}")
+    table_header = (
+        "| # | Backend | Status | Duration | Rate diff (pace) | F0 diff | "
+        "WER (pronunciation) | Similarity | Note |"
+    )
+    lines = [
+        "# CloneForge bench report",
+        "",
+        f"Line: “{report.line}”",
+        ref_line,
+        asr_line,
+        "",
+        table_header,
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    for i, r in enumerate(report.rows, start=1):
+        lines.append(
+            f"| {i} | {r.backend_name} | {r.status} | {_fmt(r.duration_s, 's')} | "
+            f"{_fmt(r.rate_diff_pct, '%')} | {_fmt(r.f0_diff_pct, '%')} | "
+            f"{r.wer_pct if isinstance(r.wer_pct, str) else _fmt(r.wer_pct, '%')} | "
+            f"{r.similarity} | {r.note} |")
+    how = (
+        "How each metric was measured: pace = speaking-rate difference from "
+        "exact WAV durations and the known word count; F0 = median "
+        "autocorrelation pitch; WER = local ASR transcript vs the target line "
+        f"({report.asr_status}); similarity = local speaker-embedding cosine "
+        f"({report.embedder_status}). Anything not measured says so — "
+        "CloneForge never estimates a quality number."
+    )
+    lines += ["", how]
+    return "\n".join(lines) + "\n"
+
+
+def report_html(report: BenchReport) -> str:
+    md = report_markdown(report)
+    body = html.escape(md).replace("\n", "<br>\n")
+    return ("<!doctype html><meta charset=utf-8>"
+            "<title>CloneForge bench report</title>"
+            f"<body style='font-family:system-ui;max-width:60rem;margin:2rem auto'>"
+            f"<pre style='white-space:pre-wrap'>{body}</pre></body>\n")
+
+
+def save_report(report: BenchReport, out_dir: str | Path) -> dict[str, str]:
+    out = Path(out_dir)
+    paths = {
+        "markdown": str(out / "bench-report.md"),
+        "html": str(out / "bench-report.html"),
+        "json": str(out / "bench-report.json"),
+    }
+    Path(paths["markdown"]).write_text(report_markdown(report), encoding="utf-8")
+    Path(paths["html"]).write_text(report_html(report), encoding="utf-8")
+    Path(paths["json"]).write_text(
+        json.dumps(report, default=lambda o: o.__dict__, indent=2), encoding="utf-8")
+    return paths
