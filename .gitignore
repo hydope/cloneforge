@@ -1,0 +1,10 @@
+.venv/
+.venv-*/
+models/*.onnx
+models/*.json
+__pycache__/
+*.egg-info/
+bench-out/
+examples/output/
+.pytest_cache/
+.ruff_cache/
