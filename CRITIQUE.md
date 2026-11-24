@@ -79,3 +79,50 @@ should use VoxCPM2 directly — CloneForge's own router will tell them so.
 - **10 is not on this roadmap** and anyone promising it for voice cloning
   in 2026 is selling something: the verified similarity ceiling of a real
   recording against itself is ~0.734.
+
+---
+
+# Pre-registered 10/10 checklist (v0.2) — written BEFORE the fixes
+
+Registered 2026-11-24. These goalposts are fixed in advance: an item is
+closed only by the evidence named next to it, and the final re-score may
+only use this list. **"10/10" here means repo/system quality against this
+checklist. It is NOT a claim that CloneForge's clone audio beats
+ElevenLabs or dots.tts on raw quality — CloneForge is not a model.**
+
+1. **Similarity MEASURED** — a local speaker embedder (resemblyzer, or
+   speechbrain ECAPA-TDNN if resemblyzer fails; attempts recorded) runs in
+   the bench, and the committed proof shows real similarity cosines for
+   every runnable backend vs the reference, with method + model named.
+   Sanity gate: reference-vs-itself ≈ 1.0 and a different speaker scores
+   lower; both controls appear in the proof.
+2. **Second neural runner** — XTTS-v2 via the coqui-tts fork side venv
+   runs end-to-end on CPU for at least the proof line(s), measured on
+   pace/F0/WER/similarity. If XTTS genuinely fails after real attempts,
+   the failure evidence is documented and OpenVoice v2 or F5-TTS lands as
+   the second runner instead. One of them must land, or the item stays open.
+3. **Proof corpus expanded** — ≥3 lines (varied length / emotion wording)
+   × 2 synthetic speakers (different Piper voices, ideally one
+   male-register, one female-register), full bench table per speaker,
+   committed as a new dated PROOF doc.
+4. **DSP ambiguity killed** — DSP ProsodyMatch is relabelled everywhere
+   (CLI, reports, README) as "CONTROL — not a voice clone
+   (prosody-matched baseline)"; bench reports separate controls from
+   clones visually and verbally.
+5. **CI green** — a GitHub Actions workflow (pytest + ruff on push) is
+   added, pushed, and the run on GitHub actually passes (verified via
+   `gh run list` / `gh run view`, fixed until green).
+6. **Clean-install proof** — a fresh venv built by following ONLY the
+   README / install.sh instructions passes `cloneforge doctor`, one
+   synth, and pytest inside it; steps + result recorded in docs; any
+   instruction that does not work as written is fixed.
+7. **Tests expanded** — new tests cover the similarity module, the
+   XTTS/new-runner adapter, and control-vs-clone separation; all tests
+   pass and ruff is clean. Quality over count — no filler tests.
+8. **Comparison refreshed** — README comparison vs the top-20 repos AND
+   the commercial top (ElevenLabs PVC, HeyGen, Cartesia, Fish, MiniMax)
+   updated with the new measured CloneForge numbers; the "What we do NOT
+   claim" section is retained and still true.
+9. **Re-score** — this file is re-scored deduction-by-deduction against
+   this checklist only. 10/10 only if every item has evidence. Commits
+   are pushed to origin main and the public repo + green CI are verified.
