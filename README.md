@@ -30,14 +30,15 @@ above them:
 ## Quick start
 
 ```bash
-git clone https://github.com/hydope/cloneforge.git   # placeholder — set your remote
+git clone https://github.com/hydope/cloneforge.git
 cd cloneforge
 ./install.sh                     # venv + core deps + Piper test voices
 .venv/bin/cloneforge doctor      # what is installed, what is not, and why
 ```
 
-Generate a synthetic test speaker, clone it with the built-in baseline, and
-benchmark everything runnable:
+Generate a synthetic test speaker, run the built-in CONTROL baseline
+(a prosody-matched baseline — not a voice clone), and benchmark
+everything runnable:
 
 ```bash
 LINE="The quick brown fox jumps over the lazy dog near the river bank."
@@ -71,13 +72,13 @@ and a Gradio UI (`pip install 'cloneforge[ui]'`, then `cloneforge ui`).
 | CosyVoice 3 | SIM 0.718, WER 2.02% | 3 s | ✅ Apache/Apache | adapter, interface-only runner |
 | F5-TTS | SIM 0.670, WER 2.00% | 3 s | ❌ CC-BY-NC weights | adapter, interface-only runner |
 | Higgs Audio V2 | best open emotion (EmergentTTS 75.7%) | 3 s | ❌ non-commercial | adapter, interface-only runner |
-| XTTS-v2 (idiap fork) | SIM 0.45 (RVCBench, ECAPA) | 6 s | ❌ CPML weights | adapter, interface-only runner |
+| XTTS-v2 (idiap fork) | SIM 0.45 (RVCBench, ECAPA) | 6 s | ❌ CPML weights | **runs** (via coqui-tts fork venv, verified) |
 | YourTTS | short-sample specialist, CPU | 3 s | ✅ | **runs** (via coqui-tts fork venv, verified) |
 | OpenVoice v2 | SIM 0.24 (RVCBench, ECAPA) | 3 s | ✅ MIT/MIT | adapter, interface-only runner |
 | GPT-SoVITS | few-shot from ~1 min | 5 s | ✅ MIT/MIT | adapter, interface-only runner |
 | RVC | pace/emotion preserved by construction (STS) | ~60 s train | ✅ | interface-only (conversion runs in RVC) |
-| Piper | — (not a cloner) | — | ✅ | **runs**: synthetic references + DSP base voice |
-| DSP ProsodyMatch | built-in baseline | 2 s | ✅ | **runs**: measured pace/pitch matching |
+| Piper | — (not a cloner; a CONTROL voice) | — | ✅ | **runs**: synthetic references + DSP base voice |
+| DSP ProsodyMatch | **CONTROL — not a voice clone** (prosody-matched baseline) | 2 s | ✅ | **runs**: measured pace/pitch matching |
 
 Full per-backend notes: [docs/BACKENDS.md](docs/BACKENDS.md).
 
@@ -122,28 +123,55 @@ them — publishing a results table in a paper is not a harness.
   prosody evidence. CloneForge flags this instead of hiding it.
 - **TTS does not preserve pace.** Text-to-speech invents new timing. Only
   speech-to-speech conversion (the RVC path) preserves a real performance's
-  pace and emotion — and in v0.1 that path is an interface, not a wrapper.
-- **The built-in DSP baseline is a baseline.** It measurably matches pace
-  and pitch; its speaker similarity is low, and the bench report will show
-  you exactly how low once an embedder is installed — or say NOT MEASURED.
+  pace and emotion — and in v0.2 that path is still an interface, not a wrapper.
+- **The built-in DSP baseline is a CONTROL, not a clone.** It measurably
+  matches pace and pitch; its measured speaker similarity is 0.5447
+  (mean, resemblyzer GE2E) against the clones' 0.90+ — the bench report
+  shows exactly that, in a separate CONTROLS section, or says
+  NOT MEASURED if no embedder is installed.
 
-## Measured proof (this build, CPU-only, synthetic speaker)
+## Measured proof (v0.2, CPU-only, synthetic speakers)
 
-From `docs/PROOF-2026-11-23.md` (full bench report, committed) — the
-reference is a synthetic Piper speaker, the line is the pangram in the
-quick start, and every number was measured on a CPU-only machine:
+From `docs/PROOF-2026-11-24.md` (full corpus, committed): 3 lines
+(short/neutral, long/formal, emotional) × 2 synthetic Piper speakers
+(lessac, female-register; ryan, male-register), every number measured
+locally. Similarity = resemblyzer VoiceEncoder (GE2E, 256-dim) cosine vs
+the reference; WER = faster-whisper tiny, local.
 
-| Backend | Pace (rate diff) | Pitch (F0 diff) | WER (local ASR) |
-|---|---|---|---|
-| DSP ProsodyMatch (built-in) | **+0.05%** | +0.86% | 0.00% |
-| YourTTS (real neural clone, coqui-tts fork) | −7.08% | −3.53% | 15.38% |
-| Piper (unshifted control) | −27.99% | +3.54% | 0.00% |
+| Backend | Category | Similarity (mean / range) | WER | Pace |
+|---|---|---|---|---|
+| XTTS-v2 (neural clone, coqui-tts fork) | CLONE | **0.9187** / 0.8859–0.9359 | 0.00% on 5/6 lines, 15.38% on one | −4.16%…−31.56% |
+| YourTTS (neural clone, coqui-tts fork) | CLONE | **0.9032** / 0.8737–0.9211 | 0.00% on all 6 | −9.98%…+18.33% |
+| DSP ProsodyMatch | **CONTROL — not a clone** | 0.5447 / 0.4829–0.6052 | 0.00% | within ±0.5% on all 6 |
+| Piper base voice | **CONTROL — not a clone** | 0.5713 / 0.5111–0.5984 | 0.00% | — |
 
-Read that table carefully: the DSP baseline "winning" pace is exactly the
-point of the harness — pace is *measurable and matchable* without any neural
-model, while speaker similarity (the thing neural models are actually for)
-is reported as **NOT MEASURED** on this machine because no local embedder
-was installed. Nothing estimated, nothing hidden.
+Sanity controls, all 6 benches: reference-vs-itself similarity = **1.0**;
+different-speaker control = 0.5111–0.5984, clearly below every clone
+(min 0.8737). Read the DSP row carefully — that is the harness working as
+designed: pace is *measurable and matchable* with no neural model at all
+(±0.5%), while similarity exposes the CONTROL as a different speaker.
+Nothing estimated, nothing hidden. (v0.1's single-line proof, where
+similarity was still NOT MEASURED, is kept at docs/PROOF-2026-11-23.md.)
+
+## CloneForge vs the commercial top
+
+CloneForge is free and local; these are neither. The comparison that
+matters is what each side can *prove*:
+
+| | CloneForge (v0.2) | ElevenLabs PVC | HeyGen Voice | Cartesia Sonic | Fish Audio | MiniMax Speech |
+|---|---|---|---|---|---|---|
+| Price | Free (MIT) | $22/mo Creator | from $29/mo PVC add-on | Pro $5/mo | API $15/1M chars | HD $100/1M chars |
+| Runs locally / private | **Yes** | No | No | No (self-host = Enterprise) | Partial (open weights, research licence) | No |
+| Published clone accuracy | **Measured on YOUR voice, locally: SIM 0.9032–0.9187 (GE2E) for its two neural runners** | Peer-reviewed best-in-class prosody; no PVC SIM published | AA Controlled-Voice Elo #1 (1,201); no SIM/WER | AA Elo 1,294; no SIM/WER | WER 0.99% EN (vendor report) | SIM 0.738 one-shot EN (paper, earlier model) |
+| Measures pace | **Yes — rate diff %, per line** | No published pace metric | No | No | No | No |
+| Urdu cloning accuracy | **UNVERIFIED — flagged in the tool** | Listed, unverified | Not in cloning list | Listed as new, unverified | Unverified | Unverified |
+
+The commercial tools are better *cloners* — ElevenLabs' peer-reviewed
+prosody evidence is the strongest in the field, and CloneForge's own
+router will send a quality-first commercial job there in its reasoning.
+What none of them does is run on your machine, for free, and *show you
+the measurements on your own reference* — including when the honest
+answer is "this CONTROL is not a clone" or "Urdu is UNVERIFIED".
 
 ## Licence
 

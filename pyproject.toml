@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cloneforge"
-version = "0.1.0"
+version = "0.2.0"
 description = "CloneForge — a free, local, open-source voice-cloning meta-engine: it routes across the best free backends and benchmarks them head-to-head on the same line."
 readme = "README.md"
 license = { text = "MIT" }
@@ -15,7 +15,10 @@ dependencies = []
 
 [project.optional-dependencies]
 piper = ["piper-tts>=1.2"]
-yourtts = ["TTS>=0.22"]
+# the maintained fork: original TTS>=0.22 cannot install on Python 3.12;
+# with CPU torch, torchcodec must additionally come from the PyTorch CPU
+# index or XTTS's torchaudio.load fails (see docs/INSTALL.md)
+yourtts = ["coqui-tts[codec]", "six"]
 # av pin: faster-whisper breaks on av>=19 (metadata_errors kwarg removed)
 asr = ["faster-whisper>=1.0", "av>=12,<17"]
 embed = ["resemblyzer>=0.1"]

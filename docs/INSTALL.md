@@ -33,6 +33,31 @@ python3 -m venv .venv
 | Gradio UI | `.venv/bin/pip install 'cloneforge[ui]'` | `cloneforge ui` |
 | Dev | `.venv/bin/pip install -e '.[dev]'` | pytest + ruff |
 
+Measured similarity also works if resemblyzer is installed in the
+coqui-tts side venv (`.venv-yourtts`) instead of the main venv — the
+bench finds it there and calls it by subprocess, reusing that venv's
+torch rather than installing a second one. That is how the 2026-11-24
+proof was measured. Override the search with `$CLONEFORGE_EMBED_PYTHON`.
+
+## Clean-install proof (2026-11-24, recorded)
+
+A fresh clone of the public repo into an empty directory, built by
+following ONLY the instructions above:
+
+1. `git clone https://github.com/hydope/cloneforge.git` — OK
+2. `./install.sh` — OK (venv, core deps, both Piper voices)
+3. `.venv/bin/cloneforge doctor` — OK; correctly reported the speaker
+   embedder as not installed (a fresh clone has no side venv) instead
+   of guessing
+4. `cloneforge reference` + `cloneforge synth` (DSP CONTROL) — OK,
+   produced a 3.30 s clone.wav for the proof line and printed the
+   CONTROL — not a voice clone label
+5. `pip install -e '.[dev]'` then `pytest` — **37 passed**; `ruff check`
+   — clean
+
+Any instruction that had failed would have been fixed and re-tested
+before this was written; none did.
+
 ## Neural backends (each is a separate, optional install)
 
 CloneForge never installs a neural backend for you silently. Run
