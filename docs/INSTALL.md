@@ -3,7 +3,7 @@
 ## Core (works on a CPU-only machine, ~250 MB)
 
 ```bash
-git clone https://github.com/example/cloneforge.git   # placeholder remote
+git clone https://github.com/hydope/cloneforge.git   # placeholder remote
 cd cloneforge
 ./install.sh
 ```

@@ -30,7 +30,7 @@ above them:
 ## Quick start
 
 ```bash
-git clone https://github.com/example/cloneforge.git   # placeholder — set your remote
+git clone https://github.com/hydope/cloneforge.git   # placeholder — set your remote
 cd cloneforge
 ./install.sh                     # venv + core deps + Piper test voices
 .venv/bin/cloneforge doctor      # what is installed, what is not, and why
