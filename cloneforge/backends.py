@@ -307,7 +307,7 @@ BACKENDS: tuple[Backend, ...] = (
     ),
     Backend(
         id="dsp-prosody",
-        name="CloneForge DSP ProsodyMatch (built-in baseline)",
+        name="DSP ProsodyMatch — CONTROL, not a voice clone (prosody-matched baseline)",
         repo="",
         stars=None,
         kind="dsp-baseline",

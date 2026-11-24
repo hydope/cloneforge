@@ -11,6 +11,14 @@ reference, then measures what can honestly be measured:
 - speaker similarity: embedding cosine (measured ONLY if a local speaker
   embedder is installed; otherwise NOT MEASURED).
 
+Rows are categorised and reported separately:
+
+- CLONE — a real voice-cloning backend (neural zero/few-shot);
+- CONTROL — NOT a voice clone: the DSP prosody-matched baseline and the
+  plain Piper base voice. Controls exist to calibrate the metrics (a
+  control's similarity shows what "a different speaker" scores); they
+  must never be read as clones, however good their pace numbers look.
+
 No metric is ever estimated. A backend that is not installed, or whose
 runner is not implemented, is reported as NOT RUN — never scored.
 """
@@ -23,11 +31,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import audio
-from .backends import BACKENDS
+from .backends import BACKENDS, BY_ID
 from .metrics import media_duration_seconds, median_f0_hz, rate_difference_pct, speech_rate_wpm, wer
 
 NOT_MEASURED = "NOT MEASURED"
 NOT_RUN = "NOT RUN"
+
+CLONE = "CLONE"
+CONTROL = "CONTROL"
+
+
+def category_for(backend_id: str) -> str:
+    """CLONE or CONTROL for a backend id — the separation is structural."""
+    kind = BY_ID[backend_id].kind
+    return CONTROL if kind in ("dsp-baseline", "reference-gen") else CLONE
 
 
 @dataclass
@@ -35,6 +52,7 @@ class BenchRow:
     backend_id: str
     backend_name: str
     status: str  # "ok" | NOT_RUN
+    category: str = CLONE  # CLONE | CONTROL
     note: str = ""
     output_path: str = ""
     duration_s: float | None = None
@@ -56,6 +74,8 @@ class BenchReport:
     rows: list[BenchRow] = field(default_factory=list)
     asr_status: str = NOT_MEASURED
     embedder_status: str = NOT_MEASURED
+    control_self_similarity: float | str = NOT_MEASURED
+    control_different_speaker_similarity: float | str = NOT_MEASURED
 
 
 def _try_asr():
@@ -71,20 +91,6 @@ def _try_asr():
         return " ".join(s.text for s in segments).strip()
 
     return transcribe
-
-
-def _try_embedder():
-    """Return an embed(path)->list[float] callable, or None."""
-    try:
-        from resemblyzer import VoiceEncoder, preprocess_wav
-    except ImportError:
-        return None
-    encoder = VoiceEncoder()
-
-    def embed(path: str):
-        return encoder.embed_utterance(preprocess_wav(path)).tolist()
-
-    return embed
 
 
 def run_bench(line: str, reference_wav: str | Path,
@@ -103,13 +109,10 @@ def run_bench(line: str, reference_wav: str | Path,
     ref_f0 = median_f0_hz(ref_samples, ref_sr)
 
     transcribe = _try_asr()
-    embed = _try_embedder()
-    ref_embedding = None
-    if embed is not None:
-        try:
-            ref_embedding = embed(str(reference_wav))
-        except Exception:  # noqa: BLE001 — embedder failed: report, don't fake
-            embed = None
+
+    from .similarity import get_embedder
+
+    embedder = get_embedder()
 
     report = BenchReport(
         line=line,
@@ -118,16 +121,17 @@ def run_bench(line: str, reference_wav: str | Path,
         reference_rate_wpm=ref_rate,
         reference_f0_hz=ref_f0,
         asr_status="faster-whisper (tiny, local)" if transcribe else NOT_MEASURED,
-        embedder_status="resemblyzer (local)" if embed else NOT_MEASURED,
+        embedder_status=embedder.method if embedder else NOT_MEASURED,
     )
 
-    from .neural import yourtts_clone
+    from .neural import xtts_clone, yourtts_clone
 
     runners = {
         "dsp-prosody": lambda p: audio.dsp_clone(
             line, reference_wav, p, reference_text=line),
         "piper": lambda p: {"output_path": str(audio.piper_synthesize(line, p))},
         "yourtts": lambda p: yourtts_clone(line, reference_wav, p),
+        "xtts2": lambda p: xtts_clone(line, reference_wav, p),
     }
 
     for b in BACKENDS:
@@ -137,35 +141,69 @@ def run_bench(line: str, reference_wav: str | Path,
                 runners[b.id](out_path)
             except Exception as exc:  # noqa: BLE001 — a failed run is data, not a crash
                 report.rows.append(BenchRow(b.id, b.name, NOT_RUN,
+                                            category=category_for(b.id),
                                             note=f"runner failed: {exc}"))
                 continue
-            row = _score(b.id, b.name, out_path, line, ref_rate, ref_f0,
-                         transcribe, embed, ref_embedding)
+            row = _score(b.id, b.name, out_path, line, ref_rate, ref_f0, transcribe)
             report.rows.append(row)
         elif b.kind == "voice-conversion":
             report.rows.append(BenchRow(
-                b.id, b.name, NOT_RUN,
-                note="interface-only in v0.1: conversion runs in RVC itself; "
+                b.id, b.name, NOT_RUN, category=category_for(b.id),
+                note="interface-only: conversion runs in RVC itself; "
                      "CloneForge does not wrap it yet"))
         elif b.kind in ("neural-clone",):
             state = "installed" if b.installed() else "not installed"
             report.rows.append(BenchRow(
-                b.id, b.name, NOT_RUN,
+                b.id, b.name, NOT_RUN, category=category_for(b.id),
                 note=f"adapter registered, backend {state}; runner is "
-                     "interface-only in v0.1 (see docs/BACKENDS.md)"))
-    # Rank measured rows by |rate diff|, then |F0 diff|; NOT RUN rows last.
-    report.rows.sort(key=lambda r: (
-        r.status != "ok",
-        abs(r.rate_diff_pct) if r.rate_diff_pct is not None else 1e9,
-        abs(r.f0_diff_pct) if r.f0_diff_pct is not None else 1e9,
-    ))
+                     "interface-only (see docs/BACKENDS.md)"))
+
+    _apply_similarity(report, embedder, reference_wav)
+
+    # Order: measured CLONEs first (similarity-first, the metric cloning is
+    # for), then CONTROLs, then NOT RUN rows. Categories never interleave.
+    def sort_key(r: BenchRow):
+        cat_rank = {CLONE: 0, CONTROL: 1}.get(r.category, 2) if r.status == "ok" else 3
+        sim = r.similarity if isinstance(r.similarity, float) else -2.0
+        return (cat_rank, -sim,
+                abs(r.rate_diff_pct) if r.rate_diff_pct is not None else 1e9)
+
+    report.rows.sort(key=sort_key)
     return report
 
 
-def _score(backend_id, name, out_path, line, ref_rate, ref_f0,
-           transcribe, embed, ref_embedding) -> BenchRow:
+def _apply_similarity(report: BenchReport, embedder, reference_wav) -> None:
+    """Batch-embed reference + every ok output; fill similarity + controls."""
+    if embedder is None:
+        return
+    ok_rows = [r for r in report.rows if r.status == "ok" and r.output_path]
+    if not ok_rows:
+        return
     from .metrics import cosine_similarity
 
+    paths = [str(reference_wav)] + [r.output_path for r in ok_rows]
+    try:
+        embeddings = embedder.embed_many(paths)
+    except Exception:  # noqa: BLE001 — embedder failure means NOT MEASURED
+        report.embedder_status = NOT_MEASURED
+        return
+    ref_emb, out_embs = embeddings[0], embeddings[1:]
+    for row, emb in zip(ok_rows, out_embs, strict=True):
+        try:
+            row.similarity = round(cosine_similarity(ref_emb, emb), 4)
+        except Exception:  # noqa: BLE001
+            row.similarity = NOT_MEASURED
+    # Sanity controls: reference vs itself must be ~1.0; a CONTROL output
+    # (a different speaker by construction) is the different-speaker control.
+    report.control_self_similarity = round(cosine_similarity(ref_emb, ref_emb), 4)
+    for row, emb in zip(ok_rows, out_embs, strict=True):
+        if row.category == CONTROL:
+            report.control_different_speaker_similarity = round(
+                cosine_similarity(ref_emb, emb), 4)
+            break
+
+
+def _score(backend_id, name, out_path, line, ref_rate, ref_f0, transcribe) -> BenchRow:
     dur = media_duration_seconds(out_path)
     words = max(1, len(line.split()))
     rate = speech_rate_wpm(words, dur)
@@ -173,6 +211,7 @@ def _score(backend_id, name, out_path, line, ref_rate, ref_f0,
     f0 = median_f0_hz(samples, sr)
     row = BenchRow(
         backend_id=backend_id, backend_name=name, status="ok",
+        category=category_for(backend_id),
         output_path=str(out_path), duration_s=dur, rate_wpm=rate,
         rate_diff_pct=rate_difference_pct(ref_rate, rate), f0_hz=f0,
         f0_diff_pct=(rate_difference_pct(ref_f0, f0)
@@ -183,17 +222,28 @@ def _score(backend_id, name, out_path, line, ref_rate, ref_f0,
             row.wer_pct = round(wer(line, transcribe(str(out_path))), 2)
         except Exception:  # noqa: BLE001 — ASR failure means NOT MEASURED
             row.wer_pct = NOT_MEASURED
-    if embed is not None and ref_embedding is not None:
-        try:
-            row.similarity = round(
-                cosine_similarity(ref_embedding, embed(str(out_path))), 4)
-        except Exception:  # noqa: BLE001 — embedder failure means NOT MEASURED
-            row.similarity = NOT_MEASURED
     return row
 
 
 def _fmt(value, suffix=""):
     return NOT_MEASURED if value is None else f"{value:.2f}{suffix}"
+
+
+_TABLE_HEADER = (
+    "| # | Backend | Status | Duration | Rate diff (pace) | F0 diff | "
+    "WER (pronunciation) | Similarity | Note |"
+)
+
+
+def _table(rows: list[BenchRow]) -> list[str]:
+    lines = [_TABLE_HEADER, "|---|---|---|---|---|---|---|---|---|"]
+    for i, r in enumerate(rows, start=1):
+        lines.append(
+            f"| {i} | {r.backend_name} | {r.status} | {_fmt(r.duration_s, 's')} | "
+            f"{_fmt(r.rate_diff_pct, '%')} | {_fmt(r.f0_diff_pct, '%')} | "
+            f"{r.wer_pct if isinstance(r.wer_pct, str) else _fmt(r.wer_pct, '%')} | "
+            f"{r.similarity} | {r.note} |")
+    return lines
 
 
 def report_markdown(report: BenchReport) -> str:
@@ -205,26 +255,40 @@ def report_markdown(report: BenchReport) -> str:
     )
     asr_line = (f"ASR for WER: {report.asr_status} · "
                 f"Speaker embedder: {report.embedder_status}")
-    table_header = (
-        "| # | Backend | Status | Duration | Rate diff (pace) | F0 diff | "
-        "WER (pronunciation) | Similarity | Note |"
-    )
+    controls_line = (
+        f"Similarity controls: reference vs itself = "
+        f"{report.control_self_similarity} (must be ~1.0); different speaker "
+        f"(CONTROL voice) vs reference = "
+        f"{report.control_different_speaker_similarity} (must be clearly "
+        "lower than a clone's score)")
+    clones = [r for r in report.rows if r.status == "ok" and r.category == CLONE]
+    controls = [r for r in report.rows if r.status == "ok" and r.category == CONTROL]
+    not_run = [r for r in report.rows if r.status != "ok"]
     lines = [
         "# CloneForge bench report",
         "",
         f"Line: “{report.line}”",
         ref_line,
         asr_line,
+        controls_line,
         "",
-        table_header,
-        "|---|---|---|---|---|---|---|---|---|",
+        "## Voice clones (neural)",
+        "",
+        *_table(clones),
+        "",
+        "## CONTROLS — not voice clones",
+        "",
+        ("The rows below are **controls, not voice clones**: a prosody-matched "
+         "DSP baseline and a plain TTS voice. They calibrate the metrics — "
+         "their similarity scores show what a *different speaker* measures — "
+         "and a good pace number here does NOT mean a good clone."),
+        "",
+        *_table(controls),
+        "",
+        "## Not run",
+        "",
+        *_table(not_run),
     ]
-    for i, r in enumerate(report.rows, start=1):
-        lines.append(
-            f"| {i} | {r.backend_name} | {r.status} | {_fmt(r.duration_s, 's')} | "
-            f"{_fmt(r.rate_diff_pct, '%')} | {_fmt(r.f0_diff_pct, '%')} | "
-            f"{r.wer_pct if isinstance(r.wer_pct, str) else _fmt(r.wer_pct, '%')} | "
-            f"{r.similarity} | {r.note} |")
     how = (
         "How each metric was measured: pace = speaking-rate difference from "
         "exact WAV durations and the known word count; F0 = median "

@@ -33,6 +33,18 @@ tts.tts_to_file(text=text, speaker_wav=reference, language=language,
 print("ok")
 """
 
+_XTTS_RUNNER = """
+import sys
+from TTS.api import TTS
+text, reference, language, out = sys.argv[1:5]
+tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2", progress_bar=False)
+tts.tts_to_file(text=text, speaker_wav=reference, language=language,
+                file_path=out)
+print("ok")
+"""
+
+XTTS_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
+
 
 def tts_interpreter() -> str | None:
     """Interpreter that can import TTS, or None (checked, not guessed)."""
@@ -90,3 +102,51 @@ def yourtts_clone(text: str, reference_wav: str | Path, out_wav: str | Path,
     if not out.exists():
         raise RuntimeError("YourTTS reported success but produced no file")
     return {"backend": "yourtts", "output_path": str(out), "via": interp}
+
+
+def xtts_available() -> tuple[bool, str]:
+    """Same interpreter probe as YourTTS — XTTS ships in the same fork."""
+    return yourtts_available()
+
+
+def xtts_clone(text: str, reference_wav: str | Path, out_wav: str | Path,
+               language: str = "en") -> dict:
+    """Clone `reference_wav`'s voice reading `text`, with XTTS-v2 on CPU.
+
+    The XTTS-v2 weights are under the Coqui Public Model Licence
+    (non-commercial). Downloading them requires accepting that licence;
+    the coqui-tts package records acceptance via the COQ_TOS_AGREED=1
+    environment variable, which CloneForge sets ONLY for the local test
+    subprocess and flags here and in docs/BACKENDS.md. Using XTTS output
+    commercially is not licensed, whatever this code does.
+    """
+    interp = tts_interpreter()
+    if interp is None:
+        raise RuntimeError(
+            "XTTS-v2 unavailable: no interpreter with `TTS` importable. "
+            "Install the fork: pip install 'coqui-tts[codec]' six "
+            "(original TTS 0.22 does not support Python 3.12).")
+    out = Path(out_wav)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ, COQ_TOS_AGREED="1")
+    if interp == sys.executable:
+        os.environ.setdefault("COQ_TOS_AGREED", "1")
+        from TTS.api import TTS
+
+        tts = TTS(XTTS_MODEL, progress_bar=False)
+        tts.tts_to_file(text=text, speaker_wav=str(reference_wav),
+                        language=language, file_path=str(out))
+    else:
+        proc = subprocess.run(
+            [interp, "-c", _XTTS_RUNNER, text, str(reference_wav),
+             language, str(out)],
+            capture_output=True, text=True, timeout=1800, check=False, env=env)
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"XTTS-v2 subprocess failed: {proc.stderr.strip()[-500:]}")
+    if not out.exists():
+        raise RuntimeError("XTTS-v2 reported success but produced no file")
+    return {"backend": "xtts2", "output_path": str(out), "via": interp,
+            "licence_note": "weights: Coqui Public Model Licence "
+                            "(non-commercial); COQ_TOS_AGREED=1 was set "
+                            "for the local test subprocess"}

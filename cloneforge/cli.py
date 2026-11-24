@@ -5,6 +5,8 @@
     cloneforge route --lang en --sample 8 --priority accuracy [--commercial]
     cloneforge reference --text "..." --out ref.wav   synthetic test speaker
     cloneforge synth --text "..." --reference ref.wav --out clone.wav
+                                   (default backend is the DSP CONTROL —
+                                   a prosody-matched baseline, not a clone)
     cloneforge bench --text "..." --reference ref.wav --out-dir bench-out
     cloneforge ui                          optional Gradio UI (pip install .[ui])
 """
@@ -22,9 +24,16 @@ from .router import route
 
 def _cmd_doctor(_args) -> int:
     print(f"CloneForge {__version__} — backend status")
+    from .bench import CONTROL, category_for
+    from .similarity import embedder_status
+
+    ok, method = embedder_status()
+    print(f"- speaker embedder (similarity) — {'INSTALLED' if ok else 'not installed'}"
+          f": {method}")
     for b in BACKENDS:
         state = "INSTALLED" if b.installed() else "not installed"
-        print(f"- {b.name} [{b.kind}] — {state}")
+        tag = " [CONTROL — not a voice clone]" if category_for(b.id) == CONTROL else ""
+        print(f"- {b.name} [{b.kind}]{tag} — {state}")
         if state == "not installed" and b.install_hint:
             print(f"    install: {b.install_hint}")
         if not b.commercial_ok:
@@ -73,6 +82,17 @@ def _cmd_reference(args) -> int:
 
 
 def _cmd_synth(args) -> int:
+    if args.backend == "xtts":
+        from .neural import xtts_clone
+
+        result = xtts_clone(args.text, args.reference, args.out,
+                            language=args.lang)
+        for key, value in result.items():
+            print(f"{key}: {value}")
+        print("Note: XTTS-v2 is a TTS cloner — it invents timing. Only "
+              "voice conversion preserves a real performance's pace. Its "
+              "weights are non-commercial (Coqui Public Model Licence).")
+        return 0
     if args.backend == "yourtts":
         from .neural import yourtts_clone
 
@@ -89,7 +109,8 @@ def _cmd_synth(args) -> int:
                        reference_text=args.reference_text)
     for key, value in result.items():
         print(f"{key}: {value}")
-    print("Note: this is the DSP baseline. For neural cloning, route first "
+    print("Note: this is a CONTROL — not a voice clone (prosody-matched "
+          "baseline). For neural cloning, route first "
           "(`cloneforge route`) and run the picked backend; TTS backends "
           "invent timing — only voice conversion preserves real pace.")
     return 0
@@ -144,8 +165,9 @@ def build_parser() -> argparse.ArgumentParser:
     fp.add_argument("--voice", default="en_US-lessac-medium")
     fp.set_defaults(fn=_cmd_reference)
 
-    sp = sub.add_parser("synth", help="clone a voice (DSP baseline or YourTTS)")
-    sp.add_argument("--backend", default="dsp", choices=["dsp", "yourtts"])
+    sp = sub.add_parser(
+        "synth", help="clone a voice (DSP CONTROL baseline, YourTTS, or XTTS-v2)")
+    sp.add_argument("--backend", default="dsp", choices=["dsp", "yourtts", "xtts"])
     sp.add_argument("--lang", default="en")
     sp.add_argument("--text", required=True)
     sp.add_argument("--reference", required=True)
