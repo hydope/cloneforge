@@ -101,9 +101,10 @@ def route(
                                "take, it does not read text")
         if b.kind == "dsp-baseline":
             score -= 2.0
-            reasons.append("built-in DSP baseline: measurable pace/pitch matching, "
-                           "low speaker similarity — included so the bench always "
-                           "has one runnable backend")
+            reasons.append("built-in DSP CONTROL — not a voice clone "
+                           "(prosody-matched baseline): measurable pace/pitch "
+                           "matching, low speaker similarity — included so the "
+                           "bench always has one runnable backend")
 
         dim = _PRIORITY_DIMENSION.get(priority)
         if dim and dim in b.strengths:

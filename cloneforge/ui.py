@@ -51,7 +51,7 @@ def launch() -> None:
             gr.Button("Route").click(do_route,
                                      [lang, sample, priority, commercial],
                                      route_out)
-        with gr.Tab("Synth (DSP baseline)"):
+        with gr.Tab("Synth (DSP CONTROL — not a voice clone)"):
             text = gr.Textbox(label="Text to speak")
             ref = gr.Audio(type="filepath", label="Reference WAV")
             ref_text = gr.Textbox(label="Reference transcript (enables pace matching)")
