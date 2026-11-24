@@ -95,7 +95,8 @@ def yourtts_clone(text: str, reference_wav: str | Path, out_wav: str | Path,
     else:
         proc = subprocess.run(
             [interp, "-c", _RUNNER, text, str(reference_wav), language, str(out)],
-            capture_output=True, text=True, timeout=900, check=False)
+            capture_output=True, text=True, timeout=900, check=False,
+            stdin=subprocess.DEVNULL)
         if proc.returncode != 0:
             raise RuntimeError(
                 f"YourTTS subprocess failed: {proc.stderr.strip()[-500:]}")
@@ -115,10 +116,12 @@ def xtts_clone(text: str, reference_wav: str | Path, out_wav: str | Path,
 
     The XTTS-v2 weights are under the Coqui Public Model Licence
     (non-commercial). Downloading them requires accepting that licence;
-    the coqui-tts package records acceptance via the COQ_TOS_AGREED=1
-    environment variable, which CloneForge sets ONLY for the local test
-    subprocess and flags here and in docs/BACKENDS.md. Using XTTS output
-    commercially is not licensed, whatever this code does.
+    the coqui-tts fork records acceptance via the COQUI_TOS_AGREED=1
+    environment variable (TTS/utils/manage.py — verified in the installed
+    0.28.0 source; without it the loader blocks forever on an interactive
+    input() prompt). CloneForge sets it ONLY for the local test
+    subprocess and flags it here and in docs/BACKENDS.md. Using XTTS
+    output commercially is not licensed, whatever this code does.
     """
     interp = tts_interpreter()
     if interp is None:
@@ -128,9 +131,9 @@ def xtts_clone(text: str, reference_wav: str | Path, out_wav: str | Path,
             "(original TTS 0.22 does not support Python 3.12).")
     out = Path(out_wav)
     out.parent.mkdir(parents=True, exist_ok=True)
-    env = dict(os.environ, COQ_TOS_AGREED="1")
+    env = dict(os.environ, COQUI_TOS_AGREED="1", COQ_TOS_AGREED="1")
     if interp == sys.executable:
-        os.environ.setdefault("COQ_TOS_AGREED", "1")
+        os.environ.setdefault("COQUI_TOS_AGREED", "1")
         from TTS.api import TTS
 
         tts = TTS(XTTS_MODEL, progress_bar=False)
@@ -140,7 +143,8 @@ def xtts_clone(text: str, reference_wav: str | Path, out_wav: str | Path,
         proc = subprocess.run(
             [interp, "-c", _XTTS_RUNNER, text, str(reference_wav),
              language, str(out)],
-            capture_output=True, text=True, timeout=1800, check=False, env=env)
+            capture_output=True, text=True, timeout=1800, check=False,
+            env=env, stdin=subprocess.DEVNULL)
         if proc.returncode != 0:
             raise RuntimeError(
                 f"XTTS-v2 subprocess failed: {proc.stderr.strip()[-500:]}")
@@ -148,5 +152,5 @@ def xtts_clone(text: str, reference_wav: str | Path, out_wav: str | Path,
         raise RuntimeError("XTTS-v2 reported success but produced no file")
     return {"backend": "xtts2", "output_path": str(out), "via": interp,
             "licence_note": "weights: Coqui Public Model Licence "
-                            "(non-commercial); COQ_TOS_AGREED=1 was set "
+                            "(non-commercial); COQUI_TOS_AGREED=1 was set "
                             "for the local test subprocess"}

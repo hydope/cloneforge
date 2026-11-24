@@ -94,7 +94,8 @@ class Embedder:
                     for p in paths]
         proc = subprocess.run(
             [self.interp, "-c", _RUNNER, *paths],
-            capture_output=True, text=True, timeout=1200, check=False)
+            capture_output=True, text=True, timeout=1200, check=False,
+            stdin=subprocess.DEVNULL)
         if proc.returncode != 0:
             raise RuntimeError(
                 f"embedder subprocess failed: {proc.stderr.strip()[-500:]}")
