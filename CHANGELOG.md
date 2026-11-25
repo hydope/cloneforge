@@ -38,7 +38,11 @@ committed before any fix). Highlights:
   exercised by tests.
 - **Playable demos** in examples/demo/ (clones of the public human
   reference + synthetic clones, MP3, <2 MB total).
-- Tests: 37 → 54+. Ruff clean; CI green.
+- Tests: 37 → 55. Ruff clean; CI green on the release commit.
+- Known open item: checklist item 1 stays FAIL/open — no VoxCPM2 clone
+  was produced (execution of the downloaded weights was halted by an
+  automated execution-risk flag, pending owner approval). The v0.3
+  world-product score is 7/10; see CRITIQUE.md.
 
 ## v0.2.0 — 2026-11-24
 

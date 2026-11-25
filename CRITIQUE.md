@@ -286,3 +286,64 @@ criteria may not be redefined mid-round to reach 10.
    distribution (0 stars/users) is NOT a checklist item — do not claim
    users; the score is about the product/repo, and CRITIQUE must say
    distribution remains 0 and unproven.
+
+---
+
+# v0.3 verdict (2026-11-25) — scored against the checklist above
+
+Evidence for every line: docs/PROOF-2026-11-24-v03.md (§ numbers refer
+to it), docs/CORPUS.md, docs/BACKENDS.md, docs/ui-page-capture.html.
+
+| # | Item | Verdict | Evidence |
+|---|---|---|---|
+| 1 | Best free models actually run | **FAIL / OPEN** | dots.tts half meets its condition: runner complete + mocked tests + blocker with hard evidence (its README's measured 5.65–10.51 GB footprint, H100-only published performance; this machine measured 7.7 GiB RAM, no GPU — proof §6). VoxCPM2 half does **not**: package installed (voxcpm 2.0.3, CPU torch), runner complete, weights download begun — then execution was halted by an automated execution-risk flag on the downloaded model content and not attempted without the owner's approval (proof §5). No VoxCPM2 clone exists; its quality/latency are NOT MEASURED, and whether it fits this machine's RAM is UNVERIFIED. The item requires a measured VoxCPM2 clone → FAIL until the owner approves executing it. |
+| 2 | ECAPA-TDNN second scorer | **PASS** | speechbrain spkrec-ecapa-voxceleb live; standalone controls self = 1.0, different speaker = 0.1208; bench controls ECAPA 0.0826–0.1629 vs clones 0.6007–0.7405; separate columns everywhere; README comparability note (proof §2). |
+| 3 | Real-human corpus | **PASS** | 3 LibriSpeech test-clean speakers, CC BY 4.0 verified from the OpenSLR SLR12 page, speaker identities from the corpus's own SPEAKERS.TXT, docs/CORPUS.md; two speakers benched with both scorers + WER + pace + latency (proof §3). Deviation from the "e.g." mix (no VCTK/Common Voice) documented in CORPUS.md with reasons. |
+| 4 | Blind listening test built | **PASS** | `cloneforge blindtest build|score`, 7 unit tests, sample pack committed (examples/blindtest/sample-pack/); unfilled pack scores "nothing to score". **No human has scored it yet** — stated in the tool output, the proof and here. |
+| 5 | Doctor tells the truth | **PASS** | Live doctor output shows XTTS/YourTTS/VoxCPM2/ECAPA INSTALLED via their side venvs with paths (proof §1); regression test asserts doctor ⊇ runner registry. |
+| 6 | UI tested | **PASS** | Gradio import crash root-caused (httpx vs bracketed-IPv6 NO_PROXY) and fixed in code; headless launch HTTP 200, /config component tree verified, capture committed (docs/ui-page-capture.html); UI function layer exercised in tests (proof §4). |
+| 7 | Playable demos + latency | **PASS** | examples/demo/: 5 MP3s, 338,689 bytes total, README-linked with source/licence; latency is a measured bench column — XTTS 391.58 s / 450.56 s per human line printed, not hidden (proof §§3, 8). |
+| 8 | Release discipline | **PASS** | Version 0.3.0; CHANGELOG.md covers v0.1→v0.3; tag v0.3.0; GitHub release created; CI green on the release commit (run id recorded in proof §9). |
+| 9 | Honest re-score | this section | — |
+
+## Re-scored sub-scores (parent critic's v0.2 scores in brackets)
+
+- **Cloner: 4/10** (was 3/10). Up: clones are now measured on real
+  human voices with a literature-comparable scorer (ECAPA 0.60–0.74),
+  and two more flagship runners are code-complete. Capped: the two
+  best free models still produce **no clone on this machine** (item 1),
+  and the measured human-voice quality of the runners that do work is
+  mid-tier — YourTTS WER 33.33% on one human line is poor, and XTTS
+  costs ~400 s/line on CPU. A cloner whose best models don't run
+  cannot score higher.
+- **App: 6/10** (was 4/10). Up: the UI is proven served (HTTP 200 +
+  capture) with its function layer under test; a blind-listening tool
+  and playable demos exist; doctor no longer lies. Capped: the UI is
+  still a minimal two-tab page, the blind test has no human result,
+  and there is no packaging beyond pip/venv.
+- **Engineering: 9/10** (unchanged). Doctor and bench now share one
+  runner registry with a regression test; an operator kill-switch was
+  added mid-round without breaking that invariant; 55 tests, ruff
+  clean, CI green; every number in the docs traces to a run in the
+  proof. Held at 9, not raised: the VoxCPM2 download stall (two
+  clients, one cache) showed operational rough edges, and the flagship
+  execution block means the hardest integration is still unproven.
+
+## World-product score for v0.3: **7/10**
+
+Deductions from 10, itemised: −2.0 checklist item 1 open (no measured
+VoxCPM2 clone — the single most important item for a product whose
+router recommends these models); −0.5 measured human-voice clone
+quality is mid-tier (ECAPA 0.60–0.74, one poor WER); −0.5 no human
+listening-test result exists and the app surface is still minimal.
+Everything else on the pre-registered checklist passes with evidence.
+
+**Distribution remains 0 and unproven**: at last check the repo had
+0 stars, 0 forks, 0 watchers and no external users. This score is
+about the product and the repository only; it claims no adoption.
+
+**The one action that unblocks the road to 10**: owner approval to
+execute the downloaded VoxCPM2 weights (flagged by an automated
+execution-risk check this round). With a measured VoxCPM2 clone in the
+human bench, item 1 can be re-scored; without it, v0.4 planning should
+start from 7/10, not from a redefined checklist.

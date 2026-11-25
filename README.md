@@ -25,7 +25,9 @@ above them:
    recommended instead of a fake ranking.
 5. **Privacy** — everything runs locally. Your reference audio never leaves
    your machine. Test fixtures are *synthetic* speakers generated on-device;
-   CloneForge ships no real person's voice.
+   the only real voices shipped are three short LibriSpeech clips
+   (CC BY 4.0) included — with attribution in docs/CORPUS.md — so the
+   bench can be checked against real humans, not just synthetic ones.
 
 ## Quick start
 
@@ -66,8 +68,8 @@ and a Gradio UI (`pip install 'cloneforge[ui]'`, then `cloneforge ui`).
 
 | Backend | Published evidence | Min sample | Commercial? | Status in CloneForge |
 |---|---|---|---|---|
-| dots.tts (SOAR) | SIM 0.792, WER 2.95% (Seed-TTS-Eval) | ~3 s | ✅ Apache/Apache | adapter, interface-only runner |
-| VoxCPM2 | SIM 0.753, WER 1.84% (Seed-TTS-Eval) | ~3 s | ✅ Apache/Apache | adapter, interface-only runner |
+| dots.tts (SOAR) | SIM 0.792, WER 2.95% (Seed-TTS-Eval) | ~3 s | ✅ Apache/Apache | runner implemented; **blocked here with hard evidence** (2B GPU model, 5.65–10.51 GB footprint per its README, H100-class; this class of machine has ~7.7 GB RAM, no GPU — docs/BACKENDS.md) |
+| VoxCPM2 | SIM 0.753, WER 1.84% (Seed-TTS-Eval) | ~3 s | ✅ Apache/Apache | runner implemented (CPU venv); **NOT RUN in v0.3** — executing the downloaded model was halted by an automated execution-risk flag, not attempted without owner approval (docs/PROOF-2026-11-24-v03.md §5) |
 | Fish Speech S2 | WER 0.99% EN (vendor report) | 10 s | ❌ research weights | adapter, interface-only runner |
 | CosyVoice 3 | SIM 0.718, WER 2.02% | 3 s | ✅ Apache/Apache | adapter, interface-only runner |
 | F5-TTS | SIM 0.670, WER 2.00% | 3 s | ❌ CC-BY-NC weights | adapter, interface-only runner |
@@ -130,6 +132,53 @@ them — publishing a results table in a paper is not a harness.
   shows exactly that, in a separate CONTROLS section, or says
   NOT MEASURED if no embedder is installed.
 
+## Measured proof (v0.3, CPU-only, REAL human speakers)
+
+From `docs/PROOF-2026-11-24-v03.md`: LibriSpeech test-clean references
+(CC BY 4.0; docs/CORPUS.md), each speaker's own line read back to them.
+**Two similarity scorers, reported separately, never blended.** GE2E
+(resemblyzer) cosines run high and **cannot be compared to published
+WavLM/ECAPA SIM figures**; ECAPA-TDNN (speechbrain
+spkrec-ecapa-voxceleb) is the literature-comparable scorer. WER =
+faster-whisper tiny, local. Latency = measured wall-clock per run.
+
+Speaker 237 (female, 13.29 s reference):
+
+| Backend | Category | Latency | Similarity GE2E | Similarity ECAPA | WER | Pace |
+|---|---|---|---|---|---|---|
+| XTTS-v2 | clone | 391.58 s | 0.8216 | 0.7116 | 17.95% | +18.32% |
+| YourTTS | clone | 47.26 s | 0.7468 | 0.6037 | 33.33% | +26.22% |
+| Piper | **CONTROL** | 2.60 s | 0.5478 | 0.1629 | 7.69% | +13.45% |
+| DSP ProsodyMatch | **CONTROL** | 3.07 s | 0.5376 | 0.1084 | 5.13% | +0.01% |
+
+Speaker 1089 (male, 10.44 s reference):
+
+| Backend | Category | Latency | Similarity GE2E | Similarity ECAPA | WER | Pace |
+|---|---|---|---|---|---|---|
+| XTTS-v2 | clone | 450.56 s | 0.8477 | 0.7405 | 14.29% | +14.14% |
+| YourTTS | clone | 42.79 s | 0.7916 | 0.6007 | 14.29% | +19.00% |
+| Piper | **CONTROL** | 6.81 s | 0.5210 | 0.0826 | 10.71% | +11.24% |
+| DSP ProsodyMatch | **CONTROL** | 5.84 s | 0.5665 | 0.1146 | 89.29% | +1.13% |
+
+Controls, both benches: self-similarity = 1.0 on both scorers;
+different-speaker ECAPA = 0.0826–0.1629, far below every clone — ECAPA
+separates speakers much harder than GE2E (0.52–0.55), which is exactly
+why the two are never blended. Read the blemishes too: on real humans
+the clones score lower than on synthetic speakers, XTTS costs
+~400 s/line on CPU, and the DSP CONTROL's WER collapses on the male
+reference (pitch-shift artifacts) while its pace match holds. VoxCPM2
+and dots.tts are NOT RUN in this proof — VoxCPM2 blocked by an
+execution-risk flag on its downloaded weights (proof §5), dots.tts by
+measured hardware evidence (proof §6). Nothing estimated.
+
+**Playable demos** (examples/demo/, 0.34 MB total MP3): the speaker-237
+reference and its XTTS/YourTTS clones, plus a synthetic reference and
+its DSP CONTROL clone — speaker source/licence in docs/CORPUS.md.
+**Blind listening test**: `cloneforge blindtest build|score` makes
+shuffled A/B packs with a hidden answer key; a sample pack from this
+bench is in examples/blindtest/sample-pack/. No human has scored it
+yet — the tool exists, the result doesn't, and the docs say so.
+
 ## Measured proof (v0.2, CPU-only, synthetic speakers)
 
 From `docs/PROOF-2026-11-24.md` (full corpus, committed): 3 lines
@@ -158,11 +207,11 @@ similarity was still NOT MEASURED, is kept at docs/PROOF-2026-11-23.md.)
 CloneForge is free and local; these are neither. The comparison that
 matters is what each side can *prove*:
 
-| | CloneForge (v0.2) | ElevenLabs PVC | HeyGen Voice | Cartesia Sonic | Fish Audio | MiniMax Speech |
+| | CloneForge (v0.3) | ElevenLabs PVC | HeyGen Voice | Cartesia Sonic | Fish Audio | MiniMax Speech |
 |---|---|---|---|---|---|---|
 | Price | Free (MIT) | $22/mo Creator | from $29/mo PVC add-on | Pro $5/mo | API $15/1M chars | HD $100/1M chars |
 | Runs locally / private | **Yes** | No | No | No (self-host = Enterprise) | Partial (open weights, research licence) | No |
-| Published clone accuracy | **Measured on YOUR voice, locally: SIM 0.9032–0.9187 (GE2E) for its two neural runners** | Peer-reviewed best-in-class prosody; no PVC SIM published | AA Controlled-Voice Elo #1 (1,201); no SIM/WER | AA Elo 1,294; no SIM/WER | WER 0.99% EN (vendor report) | SIM 0.738 one-shot EN (paper, earlier model) |
+| Published clone accuracy | **Measured on real human voices, locally: ECAPA 0.60–0.74 / GE2E 0.75–0.85 for its two neural runners (v0.3 human bench)** | Peer-reviewed best-in-class prosody; no PVC SIM published | AA Controlled-Voice Elo #1 (1,201); no SIM/WER | AA Elo 1,294; no SIM/WER | WER 0.99% EN (vendor report) | SIM 0.738 one-shot EN (paper, earlier model) |
 | Measures pace | **Yes — rate diff %, per line** | No published pace metric | No | No | No | No |
 | Urdu cloning accuracy | **UNVERIFIED — flagged in the tool** | Listed, unverified | Not in cloning list | Listed as new, unverified | Unverified | Unverified |
 
