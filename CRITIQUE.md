@@ -347,3 +347,12 @@ execute the downloaded VoxCPM2 weights (flagged by an automated
 execution-risk check this round). With a measured VoxCPM2 clone in the
 human bench, item 1 can be re-scored; without it, v0.4 planning should
 start from 7/10, not from a redefined checklist.
+
+**Release addendum (2026-11-25):** the v0.3.0 tag was first placed on
+commit 0689c22, whose CI failed (run 45544251967) because the UI
+function-layer test requires Piper voice models that CI does not
+install. The test now skips with a stated reason where the models are
+absent (full exercise retained where they exist); the tag moved to the
+fixed commit fd5ee89, whose CI is green (tag run 45544464698, main run
+45544449724, both success), and the release was recreated on it. Item
+8's PASS rests on fd5ee89, not on the first tagged commit.
