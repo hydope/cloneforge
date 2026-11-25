@@ -212,3 +212,77 @@ than silently forgiven. The Gradio UI is still untested. GPU backends
 (dots.tts, VoxCPM2, Fish, CosyVoice, F5, Higgs, OpenVoice, GPT-SoVITS)
 are still adapters without runners. A future checklist that requires
 those would score this repo lower, and should.
+
+---
+
+# v0.3 WORLD-CRITERIA checklist — PRE-REGISTERED before any v0.3 fix
+
+Registered 2026-11-24, written by the top-critic round BEFORE any v0.3
+code change (this section is its own first commit). Context: an outside
+top-critic review rated v0.2 **6.5/10 as a world product** despite the
+internal v0.2 checklist 10/10, with sub-scores **cloner 3/10, app 4/10,
+engineering 9/10**. This round is judged ONLY against the criteria
+below. An item is closed only by the evidence named next to it; the
+criteria may not be redefined mid-round to reach 10.
+
+1. **Best free models actually run.** VoxCPM2 runner end-to-end
+   producing a measured clone: try (a) `pip install voxcpm` PyTorch CPU
+   (expect slow/OOM risk — run serially, short line, watch RAM), then
+   (b) the GGUF/llama.cpp CPU route (VoxCPM GGUF builds exist per its
+   ecosystem) if (a) fails. dots.tts runner: real attempt (install + one
+   short clone); if it cannot run here, its runner code must still be
+   complete, unit-tested with a mocked backend, and the bench must state
+   the exact hardware blocker with evidence (RAM/VRAM figures). Item
+   PASSES only if VoxCPM2 produces a measured clone in the proof AND
+   dots.tts either runs or is blocked with hard evidence.
+2. **Literature-aligned similarity.** Add ECAPA-TDNN (speechbrain,
+   spkrec-ecapa-voxceleb) as a second scorer alongside GE2E. Bench
+   reports both, in SEPARATE columns/tables, never blended, with a
+   README note that GE2E numbers cannot be compared to published
+   WavLM/ECAPA SIM and ECAPA is the literature-comparable one. Controls
+   for ECAPA too (self ≈1.0, different speaker lower).
+3. **Real-human corpus.** Download a small set of public licensed human
+   reference clips (e.g. 2 LibriSpeech test-clean speakers + 1 VCTK or
+   Common Voice speaker; keep total download sane, <500MB, clips
+   trimmed to reference length), record source/licence/speaker in
+   docs/CORPUS.md, and bench the runnable cloning backends against at
+   least one human reference (similarity both scorers, WER, pace).
+   Synthetic corpus stays, clearly separated from human results.
+4. **Blind listening test built.** `cloneforge blindtest` (CLI) that
+   generates an ABX/A-B pack: shuffled clone-vs-reference pairs with a
+   hidden answer key file, a scoring sheet (markdown or HTML), and a
+   `blindtest score` command that unblinds and computes accuracy once a
+   human fills it in. Unit-test the shuffle/scoring logic. It does NOT
+   need a human to have completed it to pass — the tool + a generated
+   sample pack committed as an example is the deliverable; state plainly
+   that no human has scored it yet.
+5. **Doctor tells the truth.** Fix detection so XTTS/YourTTS (and the
+   embedders) are reported INSTALLED (via side venv) with the venv path,
+   matching what bench can run. Add a regression test that doctor's
+   installed-set includes every backend the bench runner registry can
+   execute.
+6. **UI tested.** Install gradio (in an extra/venv as appropriate),
+   launch the UI headless, prove it serves (HTTP 200 + a screenshot or
+   DOM/text capture of the rendered page in docs), exercise at least one
+   synth through the UI's own function layer in a test. If Gradio
+   genuinely cannot run here, replace with a dependency-light local web
+   UI (stdlib http.server) that CAN be launched and proven — a working
+   simple UI beats an untested fancy one.
+7. **Playable demos + latency.** Commit small demo audio files (clones
+   of the public human reference + synthetic ones, MP3/OGG sized for
+   GitHub, ideally <2MB total) under examples/demo/ with a README
+   section linking them and stating speaker source/licence. Bench must
+   also record wall-clock latency per backend run (seconds, measured) —
+   XTTS's ~85s/line must appear as a number, not be hidden.
+8. **Release discipline.** Version bump to 0.3.0, CHANGELOG.md created
+   covering v0.1→v0.3, git tag v0.3.0, GitHub release created with
+   `gh release create` with notes, CI green on the release commit
+   (verify with gh run list).
+9. **Re-score honestly.** CRITIQUE.md gets a v0.3 section: the parent
+   critic's 6.5/10 sub-scores (cloner 3/10, app 4/10, engineering 9/10)
+   re-scored one by one against evidence, THEN a single world-product
+   score. 10/10 only if every checklist item passes with evidence AND
+   the re-scored sub-scores support it. Known ceiling warning:
+   distribution (0 stars/users) is NOT a checklist item — do not claim
+   users; the score is about the product/repo, and CRITIQUE must say
+   distribution remains 0 and unproven.
