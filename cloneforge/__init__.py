@@ -8,6 +8,6 @@ similarity metrics, marking anything it cannot measure as NOT MEASURED
 instead of inventing a number.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = ["__version__"]

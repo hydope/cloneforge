@@ -130,6 +130,109 @@ def embedder_status() -> tuple[bool, str]:
     return True, emb.method
 
 
+ECAPA_METHOD = "speechbrain ECAPA-TDNN (spkrec-ecapa-voxceleb), via {interp}"
+ECAPA_METHOD_INPROCESS = "speechbrain ECAPA-TDNN (spkrec-ecapa-voxceleb), in-process"
+
+_ECAPA_RUNNER = """
+import json, sys
+import torchaudio
+from speechbrain.inference.speaker import EncoderClassifier
+enc = EncoderClassifier.from_hparams(
+    source="speechbrain/spkrec-ecapa-voxceleb",
+    savedir="models/spkrec-ecapa-voxceleb")
+out = []
+for p in sys.argv[1:]:
+    signal, sr = torchaudio.load(p)
+    if signal.shape[0] > 1:
+        signal = signal.mean(dim=0, keepdim=True)
+    if sr != 16000:
+        signal = torchaudio.functional.resample(signal, sr, 16000)
+    emb = enc.encode_batch(signal).squeeze().tolist()
+    out.append(emb)
+print(json.dumps(out))
+"""
+
+
+def _probe_module(interp: str, module: str) -> bool:
+    if not Path(interp).exists():
+        return False
+    proc = subprocess.run(
+        [interp, "-c", f"import {module}"],
+        capture_output=True, timeout=300, check=False)
+    return proc.returncode == 0
+
+
+def ecapa_interpreter() -> str | None:
+    """Interpreter that can import speechbrain, or None (probed)."""
+    candidates = []
+    env = os.environ.get("CLONEFORGE_EMBED_PYTHON")
+    if env:
+        candidates.append(env)
+    root = Path(__file__).resolve().parent.parent
+    candidates.append(str(root / ".venv-yourtts" / "bin" / "python"))
+    candidates.append(sys.executable)
+    for cand in candidates:
+        if cand == sys.executable:
+            try:
+                import speechbrain  # noqa: F401
+
+                return cand
+            except ImportError:
+                continue
+        elif _probe_module(cand, "speechbrain"):
+            return cand
+    return None
+
+
+class EcapaEmbedder:
+    """ECAPA-TDNN speaker embedder — the literature-comparable scorer.
+
+    Published SIM figures for VoxCPM2 / CosyVoice / XTTS-v2 in RVCBench
+    use ECAPA-family embeddings; GE2E (resemblyzer) numbers live on a
+    different scale and must never be blended with these. This class is
+    deliberately a separate scorer with its own method string, columns
+    and controls.
+    """
+
+    name = "ecapa"
+
+    def __init__(self, interp: str):
+        self.interp = interp
+        self.method = ECAPA_METHOD.format(interp=interp)
+
+    def embed_many(self, paths: list[str]) -> list[list[float]]:
+        if not paths:
+            return []
+        root = Path(__file__).resolve().parent.parent
+        proc = subprocess.run(
+            [self.interp, "-c", _ECAPA_RUNNER, *paths],
+            capture_output=True, text=True, timeout=1800, check=False,
+            stdin=subprocess.DEVNULL, cwd=str(root))
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"ECAPA subprocess failed: {proc.stderr.strip()[-500:]}")
+        lines = [ln for ln in proc.stdout.splitlines() if ln.strip().startswith("[")]
+        if not lines:
+            raise RuntimeError("ECAPA subprocess produced no embeddings")
+        return json.loads(lines[-1])
+
+
+def get_ecapa_embedder() -> EcapaEmbedder | None:
+    """Return a working ECAPA embedder, or None (→ ECAPA NOT MEASURED)."""
+    interp = ecapa_interpreter()
+    if interp is None:
+        return None
+    return EcapaEmbedder(interp)
+
+
+def ecapa_status() -> tuple[bool, str]:
+    emb = get_ecapa_embedder()
+    if emb is None:
+        return False, ("speechbrain not importable in this venv or the "
+                       "coqui-tts side venv (see docs/INSTALL.md)")
+    return True, emb.method
+
+
 def similarity(emb: Embedder, path_a: str, path_b: str) -> float:
     """Cosine similarity between the speaker embeddings of two WAV files."""
     a, b = emb.embed_many([path_a, path_b])

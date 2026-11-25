@@ -8,3 +8,4 @@ bench-out/
 examples/output/
 .pytest_cache/
 .ruff_cache/
+models/spkrec-ecapa-voxceleb/

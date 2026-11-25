@@ -46,8 +46,32 @@ print("ok")
 XTTS_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
 
 
+_TTS_INTERP_CACHE: str | None = None
+_TTS_INTERP_PROBED = False
+
+
+def side_venv_path() -> Path:
+    """The coqui-tts side venv root (.venv-yourtts), whether or not it works."""
+    return Path(__file__).resolve().parent.parent / ".venv-yourtts"
+
+
 def tts_interpreter() -> str | None:
-    """Interpreter that can import TTS, or None (checked, not guessed)."""
+    """Interpreter that can import TTS, or None (checked, not guessed).
+
+    The probe runs a subprocess per candidate, so the result is cached
+    for the life of the process — doctor and bench must agree, and must
+    not pay the probe cost (or disagree) between calls.
+    """
+    global _TTS_INTERP_CACHE, _TTS_INTERP_PROBED
+    if _TTS_INTERP_PROBED:
+        return _TTS_INTERP_CACHE
+    result = _probe_tts_interpreter()
+    _TTS_INTERP_CACHE = result
+    _TTS_INTERP_PROBED = True
+    return result
+
+
+def _probe_tts_interpreter() -> str | None:
     candidates = []
     env = os.environ.get("CLONEFORGE_TTS_PYTHON")
     if env:

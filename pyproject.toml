@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cloneforge"
-version = "0.2.0"
+version = "0.3.0"
 description = "CloneForge — a free, local, open-source voice-cloning meta-engine: it routes across the best free backends and benchmarks them head-to-head on the same line."
 readme = "README.md"
 license = { text = "MIT" }
@@ -22,6 +22,12 @@ yourtts = ["coqui-tts[codec]", "six"]
 # av pin: faster-whisper breaks on av>=19 (metadata_errors kwarg removed)
 asr = ["faster-whisper>=1.0", "av>=12,<17"]
 embed = ["resemblyzer>=0.1"]
+# ECAPA scorer: installed into the coqui-tts side venv in practice (it
+# reuses that venv's torch — see docs/INSTALL.md); listed here so the
+# dependency is declared, not hidden
+ecapa = ["speechbrain>=1.0"]
+# VoxCPM2 runs from its own side venv (.venv-vox): pip install voxcpm
+vox = ["voxcpm>=2.0"]
 ui = ["gradio>=4.0"]
 dev = ["pytest>=8.0", "ruff>=0.5"]
 

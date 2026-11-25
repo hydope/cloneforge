@@ -41,11 +41,46 @@ class Backend:
     notes: str = ""
 
     def installed(self) -> bool:
+        return self.status()[0]
+
+    def status(self) -> tuple[bool, str]:
+        """(installed, via) — probed the same way the bench runs the backend.
+
+        Most backends are probed in the current environment. The coqui-tts
+        backends (YourTTS, XTTS-v2) usually live in the side venv
+        (.venv-yourtts) and are executed by subprocess — probing only the
+        current environment made `doctor` report them "not installed"
+        while the bench ran them (v0.2 bug, critic-found). They are now
+        probed through cloneforge.neural.tts_interpreter(), the exact
+        probe the runners use, so doctor and bench cannot disagree.
+        """
+        if self.id in _SIDE_VENV_IDS:
+            from .neural import tts_interpreter
+
+            interp = tts_interpreter()
+            if interp is not None:
+                return True, f"side venv interpreter {interp}"
+            return False, ""
+        if self.id == "voxcpm2":
+            from .voxcpm import voxcpm_interpreter
+
+            interp = voxcpm_interpreter()
+            if interp is not None:
+                return True, f"side venv interpreter {interp}"
+            return False, ""
+        if self.id == "dotstts":
+            from .dotstts import dotstts_interpreter
+
+            if dotstts_interpreter() is not None:
+                return True, "dots.tts interpreter probed"
+            return False, ""
         if self.probe_module and importlib.util.find_spec(self.probe_module) is not None:
-            return True
+            return True, "current environment"
         if self.probe_binary and shutil.which(self.probe_binary) is not None:
-            return True
-        return self.id in _BUILTIN_IDS
+            return True, f"binary {self.probe_binary}"
+        if self.id in _BUILTIN_IDS:
+            return True, "built into CloneForge"
+        return False, ""
 
 
 # Strength scale: 5 = best published evidence in class, 1 = documented weakness.
@@ -328,6 +363,9 @@ BACKENDS: tuple[Backend, ...] = (
 )
 
 _BUILTIN_IDS = frozenset({"dsp-prosody"})
+
+# Backends executed via the coqui-tts side venv (.venv-yourtts) subprocess.
+_SIDE_VENV_IDS = frozenset({"xtts2", "yourtts"})
 
 BY_ID: dict[str, Backend] = {b.id: b for b in BACKENDS}
 
