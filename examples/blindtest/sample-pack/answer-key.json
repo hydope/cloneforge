@@ -1,0 +1,26 @@
+{
+  "pair-01": {
+    "clone_side": "B",
+    "backend": "xtts2",
+    "reference_source": "examples/corpus/librispeech-237.wav",
+    "clone_source": "/home/hatch/workspace/cloneforge-corpus/bench-human-237/xtts2.wav"
+  },
+  "pair-02": {
+    "clone_side": "B",
+    "backend": "yourtts",
+    "reference_source": "examples/corpus/librispeech-237.wav",
+    "clone_source": "/home/hatch/workspace/cloneforge-corpus/bench-human-237/yourtts.wav"
+  },
+  "pair-03": {
+    "clone_side": "A",
+    "backend": "dsp-prosody",
+    "reference_source": "examples/corpus/librispeech-237.wav",
+    "clone_source": "/home/hatch/workspace/cloneforge-corpus/bench-human-237/dsp-prosody.wav"
+  },
+  "pair-04": {
+    "clone_side": "B",
+    "backend": "piper",
+    "reference_source": "examples/corpus/librispeech-237.wav",
+    "clone_source": "/home/hatch/workspace/cloneforge-corpus/bench-human-237/piper.wav"
+  }
+}

@@ -117,6 +117,17 @@ def test_voxcpm_runner_with_mocked_backend(tmp_path):
     assert out.exists()
 
 
+def test_disable_backends_kill_switch(monkeypatch):
+    monkeypatch.setenv("CLONEFORGE_DISABLE_BACKENDS", "voxcpm2,xtts2")
+    availability = bench.runner_availability()
+    for bid in ("voxcpm2", "xtts2"):
+        ok, why = availability[bid]
+        assert ok is False
+        assert "CLONEFORGE_DISABLE_BACKENDS" in why
+    # untouched runners are unaffected
+    assert availability["dsp-prosody"][0] is True
+
+
 def test_ui_function_layer_route_and_synth(tmp_path):
     """Exercise the UI's own functions (not the browser): route + synth."""
     from cloneforge import ui

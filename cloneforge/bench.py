@@ -105,21 +105,39 @@ def runner_availability() -> dict[str, tuple[bool, str]]:
     runner can execute, doctor must report the backend INSTALLED, and
     vice versa (regression-tested — the v0.2 doctor bug was the two
     disagreeing).
+
+    $CLONEFORGE_DISABLE_BACKENDS (comma-separated ids) is an operator
+    kill-switch: a disabled backend reports NOT RUN with the reason
+    stated, and doctor's status() applies the same switch, so the two
+    still cannot disagree.
     """
     import importlib.util
+    import os
 
     from .dotstts import dotstts_available
     from .neural import xtts_available, yourtts_available
     from .voxcpm import voxcpm_available
 
+    disabled = {s.strip() for s in
+                os.environ.get("CLONEFORGE_DISABLE_BACKENDS", "").split(",")
+                if s.strip()}
+
+    disabled_reason = "disabled by operator via CLONEFORGE_DISABLE_BACKENDS"
+
+    def probe(bid, fn):
+        if bid in disabled:
+            return (False, disabled_reason)
+        return fn()
+
     return {
-        "dsp-prosody": (True, "built into CloneForge"),
-        "piper": (importlib.util.find_spec("piper") is not None,
-                  "piper-tts in current environment"),
-        "yourtts": yourtts_available(),
-        "xtts2": xtts_available(),
-        "voxcpm2": voxcpm_available(),
-        "dotstts": dotstts_available(),
+        "dsp-prosody": probe("dsp-prosody", lambda: (True, "built into CloneForge")),
+        "piper": probe("piper", lambda: (
+            importlib.util.find_spec("piper") is not None,
+            "piper-tts in current environment")),
+        "yourtts": probe("yourtts", yourtts_available),
+        "xtts2": probe("xtts2", xtts_available),
+        "voxcpm2": probe("voxcpm2", voxcpm_available),
+        "dotstts": probe("dotstts", dotstts_available),
     }
 
 

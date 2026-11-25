@@ -39,6 +39,47 @@ bench finds it there and calls it by subprocess, reusing that venv's
 torch rather than installing a second one. That is how the 2026-11-24
 proof was measured. Override the search with `$CLONEFORGE_EMBED_PYTHON`.
 
+## v0.3 extras
+
+**ECAPA scorer (speechbrain)** — the second, literature-comparable
+similarity scorer. Install into the coqui-tts side venv (where the
+embedders run):
+
+```bash
+.venv-yourtts/bin/pip install speechbrain   # 1.1.2 verified
+```
+
+Its weights (spkrec-ecapa-voxceleb) download from HuggingFace on first
+use into `models/spkrec-ecapa-voxceleb/`.
+
+**VoxCPM2 (optional, .venv-vox)** — CPU torch MUST come from the
+PyTorch CPU index; a default `pip install voxcpm` pulls ~2.5 GB of
+CUDA wheels a CPU-only machine cannot use (observed in the v0.3
+round):
+
+```bash
+python3 -m venv .venv-vox
+.venv-vox/bin/pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+.venv-vox/bin/pip install voxcpm            # 2.0.3 verified
+```
+
+The VoxCPM2 weights (~4.96 GB total: model.safetensors 4.58 GB +
+audiovae.pth 0.38 GB) download from HuggingFace on first generation.
+The download was observed stalling under the xet transfer backend
+when two clients shared the cache; `HF_HUB_DISABLE_XET=1` (classic
+resumable HTTP) progressed at ~2.5 MB/s. NOTE: in the v0.3 round,
+actually *executing* the downloaded model was halted by an automated
+execution-risk flag and not attempted without the owner's approval —
+see docs/PROOF-2026-11-24-v03.md. The runner can be disabled with
+$CLONEFORGE_DISABLE_BACKENDS=voxcpm2.
+
+**Gradio UI gotcha** — gradio 6.x parses the process environment at
+import; an NO_PROXY value containing a bracketed IPv6 entry such as
+`[::1]` crashes httpx (`Invalid port: ':1]'`) before the UI starts.
+`cloneforge ui` sanitises NO_PROXY/no_proxy before importing gradio,
+so no user action is needed; the failure and fix are recorded in
+docs/PROOF-2026-11-24-v03.md.
+
 ## Clean-install proof (2026-11-24, recorded)
 
 A fresh clone of the public repo into an empty directory, built by

@@ -65,10 +65,11 @@ def hardware_blocker() -> str:
     ram = _total_ram_gb()
     ram_txt = f"{ram:.1f} GB total RAM" if ram else "RAM unknown"
     gpu_txt = "a GPU is present" if _gpu_present() else "no GPU detected"
-    return (f"dots.tts needs ~{entry.vram_gb:.0f} GB VRAM-class memory "
-            f"(registry, from its published footprint); this machine has "
-            f"{ram_txt} and {gpu_txt}. See docs/BACKENDS.md for the "
-            "install attempt log.")
+    return (f"dots.tts is a 2B-parameter GPU model: its own README's "
+            f"measured serving footprint is 5.65 GB at the smallest bucket, "
+            f"rising to {entry.vram_gb:.2f} GB, with all published "
+            f"performance measured on 1x H100; this machine has {ram_txt} "
+            f"and {gpu_txt}. See docs/BACKENDS.md for the attempt log.")
 
 
 def dotstts_interpreter() -> str | None:

@@ -1,7 +1,48 @@
 # Backend adapters
 
 An adapter is a registry entry (`cloneforge/backends.py`) plus, where
-implemented, a runner. In v0.2 exactly four runners are implemented:
+implemented, a runner.
+
+## v0.3 additions
+
+- **VoxCPM2** (`cloneforge/voxcpm.py`) — runner implemented (side venv
+  `.venv-vox`, CPU torch, continuation mode with the reference
+  transcript). Status in the v0.3 proof: **NOT RUN — execution of the
+  downloaded model was halted by an automated execution-risk flag on
+  the model files, and the run was not attempted without the owner's
+  approval.** The weights download itself reached 311,734,174 of
+  ~4.58 GB for model.safetensors (plus a 0.38 GB audiovae.pth) before
+  being stopped; install of the `voxcpm` 2.0.3 package and CPU torch
+  2.15.0+cpu into .venv-vox succeeded and is logged in
+  docs/PROOF-2026-11-24-v03.md. The runner stays in the registry behind
+  the operator kill-switch ($CLONEFORGE_DISABLE_BACKENDS) until the
+  owner approves executing it.
+- **dots.tts** (`cloneforge/dotstts.py`) — runner implemented and
+  unit-tested with a mocked backend. **Blocked with hard evidence**:
+  dots.tts is a 2B-parameter GPU model; its own README (read
+  2026-11-25) tabulates a measured serving memory footprint of
+  5.65 GB at the smallest bucket (<64 patches), 6.53 GB (<128),
+  7.86 GB (<256) and 10.51 GB (<512), and all its published
+  performance figures are measured on 1× NVIDIA H100. This machine,
+  measured the same day: 8,124,900 kB total RAM (`/proc/meminfo`
+  MemTotal ≈ 7.7 GiB usable), no GPU (`nvidia-smi` not found, no
+  /dev/nvidia*). Additionally, the cloned dots.tts repository was
+  flagged by an automated execution-risk check in this session, so its
+  code was read as text only and never installed or executed. The
+  bench prints this blocker verbatim from
+  `dotstts.hardware_blocker()`, which measures RAM and GPU presence at
+  runtime rather than assuming them.
+- **ECAPA-TDNN scorer** (`cloneforge/similarity.py`, speechbrain
+  spkrec-ecapa-voxceleb) — second, literature-comparable similarity
+  scorer alongside GE2E; see "Similarity measurement" below.
+- **Doctor truth fix** — `Backend.status()` and the bench runner
+  registry (`bench.runner_availability()`) now consult the same
+  interpreter probes, so what doctor calls INSTALLED is exactly what
+  the bench can execute; regression-tested.
+
+## v0.2 runners
+
+In v0.2 exactly four runners were implemented:
 
 - **Piper** (`piper` module) — generates synthetic reference speakers and
   the DSP CONTROL's base voice. Not a cloner; a CONTROL in bench reports.
@@ -33,13 +74,24 @@ has not been executed on this machine is not claimed as working.
 
 ## Similarity measurement
 
-`cloneforge/similarity.py` wraps resemblyzer's VoiceEncoder (GE2E,
-256-dim). It runs in-process when importable, else by subprocess in the
-coqui-tts side venv (reusing its torch). Every bench report names the
-method and shows two sanity controls: reference-vs-itself (must be ~1.0)
-and a different-speaker CONTROL voice vs the reference (must be clearly
-lower than the clones). If no embedder is reachable, similarity is
-reported NOT MEASURED — never estimated.
+Two independent scorers, reported in separate columns, never blended:
+
+- **GE2E** — `cloneforge/similarity.py` wraps resemblyzer's VoiceEncoder
+  (GE2E, 256-dim). GE2E cosines run high (clones 0.75–0.92 in our
+  benches) and are **not comparable** to the SIM figures published for
+  WavLM/ECAPA-based evaluations.
+- **ECAPA-TDNN** — speechbrain `spkrec-ecapa-voxceleb` (192-dim),
+  the architecture family used by Seed-TTS-Eval-style SIM reporting;
+  this is the literature-comparable column. Its cosines run lower and
+  separate speakers harder (different-speaker controls 0.11–0.16 in the
+  v0.3 human bench vs GE2E's 0.54–0.55).
+
+Both run in-process when importable, else by subprocess in the
+coqui-tts side venv (reusing its torch). Every bench report names both
+methods and shows sanity controls for each: reference-vs-itself (must
+be ~1.0) and a different-speaker CONTROL voice vs the reference (must
+be clearly lower than the clones). If a scorer is unreachable, its
+column is NOT MEASURED — never estimated.
 
 ## Pace-preservation mode (speech-to-speech)
 
