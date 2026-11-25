@@ -135,6 +135,20 @@ def test_ui_function_layer_route_and_synth(tmp_path):
     text = ui.route_text("en", 10, "accuracy", False)
     assert "VoxCPM2" in text or "dots.tts" in text
 
+    # The synth half needs the Piper voice models, which install.sh
+    # downloads (they are not in the repo). Where they are absent
+    # (e.g. CI), skip with the reason instead of failing on a missing
+    # optional dependency — the full exercise runs wherever the models
+    # exist (proof doc, v0.3 round: 55 passed locally).
+    import importlib.util
+    from pathlib import Path
+
+    import cloneforge
+    models = Path(cloneforge.__file__).parent.parent / "models"
+    if importlib.util.find_spec("piper") is None or not (
+            models / "en_US-lessac-medium.onnx").exists():
+        pytest.skip("Piper voice models not installed in this environment")
+
     from cloneforge.audio import make_reference
 
     ref = make_reference("The UI synth test reference line.", tmp_path / "ref.wav")
