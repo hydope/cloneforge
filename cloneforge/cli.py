@@ -196,14 +196,12 @@ def _cmd_blindtest(args) -> int:
 
 
 def _cmd_ui(_args) -> int:
-    try:
-        import gradio  # noqa: F401
-    except ImportError:
-        print("Gradio is not installed. Run: pip install 'cloneforge[ui]'",
-              file=sys.stderr)
-        return 2
-    from .ui import launch
+    from .ui import gradio_available, launch
 
+    ok, reason = gradio_available()
+    if not ok:
+        print(f"Gradio UI unavailable: {reason}", file=sys.stderr)
+        return 2
     launch()
     return 0
 

@@ -8,8 +8,41 @@ are preserved in the UI text.
 
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
+
+
+def _sanitize_proxy_env() -> None:
+    """Make NO_PROXY safe for httpx before gradio imports it.
+
+    Measured failure (v0.3 round, this VM): gradio 6.x creates an
+    httpx.Client at import time; httpx parses NO_PROXY, and bracketed
+    IPv6 entries such as `[::1]` crash it with
+    `httpx.InvalidURL: Invalid port: ':1]'` — gradio cannot even be
+    imported. Dropping bracketed IPv6 literals from NO_PROXY/no_proxy
+    (localhost names stay) fixes the import without touching the proxy
+    itself. Only this process's environment is modified.
+    """
+    for var in ("NO_PROXY", "no_proxy"):
+        value = os.environ.get(var)
+        if not value:
+            continue
+        kept = [p for p in value.split(",")
+                if p.strip() and not p.strip().startswith("[")]
+        os.environ[var] = ",".join(kept)
+
+
+def gradio_available() -> tuple[bool, str]:
+    """(available, reason) — sanitises the env, then probes the import."""
+    _sanitize_proxy_env()
+    try:
+        import gradio  # noqa: F401
+
+        return True, "gradio importable"
+    except ImportError:
+        return False, "gradio not installed (pip install 'cloneforge[ui]')"
+
 
 
 def route_text(lang, sample, priority, commercial) -> str:
@@ -39,6 +72,7 @@ def synth_dsp(text, reference_audio, reference_text):
 
 
 def launch(server_port: int = 7860, share: bool = False) -> None:
+    _sanitize_proxy_env()
     import gradio as gr
 
     with gr.Blocks(title="CloneForge") as demo:
